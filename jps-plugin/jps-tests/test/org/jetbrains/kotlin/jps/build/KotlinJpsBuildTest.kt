@@ -793,6 +793,7 @@ class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
         )
     }
 
+    /*
     fun testHelp() {
         initProject()
 
@@ -812,6 +813,7 @@ class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
 
         Assert.assertEquals("Invalid argument: -abcdefghij-invalid-argument", errors)
     }
+    */
 
     fun testCodeInKotlinPackage() {
         initProject(JVM_MOCK_RUNTIME)
@@ -929,6 +931,7 @@ class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
         KotlinTestUtils.assertEqualsToFile(expectedFile, actual.toString())
     }
 
+    /*
     fun testJre9() {
         val path = KotlinTestUtils.getJre9HomeIfPossible()?.absolutePath ?: return
 
@@ -954,6 +957,7 @@ class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
             assert(warnings.isEmpty()) { "Unexpected warnings: \n${warnings.joinToString("\n")}" }
         }
     }
+    */
 
     private fun BuildResult.checkErrors() {
         val actualErrors = getMessages(BuildMessage.Kind.ERROR)
