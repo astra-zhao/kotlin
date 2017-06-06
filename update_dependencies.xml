@@ -154,6 +154,26 @@
         </jar>
     </target>
 
+    <target name="build-mock-jdk">
+        <mkdir dir="out/generateMockJdk"/>
+        <javac srcdir="generators/src/org/jetbrains/kotlin/generators/mockJDK" destdir="out/generateMockJdk">
+            <classpath>
+                <fileset dir="ideaSDK/lib">
+                    <include name="guava*.jar"/>
+                </fileset>
+            </classpath>
+        </javac>
+
+        <java classname="org.jetbrains.kotlin.generators.mockJDK.GenerateMockJdk">
+            <classpath>
+                <pathelement location="out/generateMockJdk"/>
+                <fileset dir="ideaSDK/lib">
+                    <include name="guava*.jar"/>
+                </fileset>
+            </classpath>
+        </java>
+    </target>
+
     <target name="fetch-third-party" depends="make-dependency-dirs, make-native-platform-uberjar">
         <antcall target="override-version"/>
 
@@ -295,6 +315,9 @@
 
         <!-- node.js -->
         <antcall target="download-nodejs-and-npm"/>
+
+        <!-- mock JDK -->
+        <antcall target="build-mock-jdk"/>
     </target>
 
     <macrodef name="get-protobuf-and-rename-packages">
