@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.search.ideaExtensions
@@ -38,40 +27,54 @@ import org.jetbrains.kotlin.psi.KtCallableDeclaration
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtProperty
-import org.jetbrains.kotlin.utils.ifEmpty
 
 class KotlinOverridingMethodReferenceSearcher : MethodUsagesSearcher() {
-    override fun processQuery(p: MethodReferencesSearch.SearchParameters, consumer: Processor<PsiReference>) {
-        super.processQuery(p, consumer)
-
+    override fun processQuery(p: MethodReferencesSearch.SearchParameters, consumer: Processor<in PsiReference>) {
         val method = p.method
+        val isConstructor = p.project.runReadActionInSmartMode { method.isConstructor }
+        if (isConstructor) {
+            return
+        }
+
+        val searchScope = p.project.runReadActionInSmartMode {
+            p.effectiveSearchScope
+                .intersectWith(method.useScope)
+                .restrictToKotlinSources()
+        }
+
+        if (searchScope === GlobalSearchScope.EMPTY_SCOPE) return
+
+        super.processQuery(MethodReferencesSearch.SearchParameters(method, searchScope, p.isStrictSignatureSearch, p.optimizer), consumer)
+
         p.project.runReadActionInSmartMode {
             val containingClass = method.containingClass ?: return@runReadActionInSmartMode
-
-            val searchScope = p.effectiveSearchScope
-                    .intersectWith(method.useScope)
-                    .restrictToKotlinSources()
-            if (searchScope === GlobalSearchScope.EMPTY_SCOPE) return@runReadActionInSmartMode
 
             val nameCandidates = getPropertyNamesCandidatesByAccessorName(Name.identifier(method.name))
             for (name in nameCandidates) {
                 p.optimizer.searchWord(
-                        name.asString(),
-                        searchScope,
-                        UsageSearchContext.IN_CODE,
-                        true,
-                        method,
-                        getTextOccurrenceProcessor(arrayOf(method), containingClass, false)
+                    name.asString(),
+                    searchScope,
+                    UsageSearchContext.IN_CODE,
+                    true,
+                    method,
+                    getTextOccurrenceProcessor(arrayOf(method), containingClass, false)
                 )
             }
         }
     }
 
-    override fun getTextOccurrenceProcessor(methods: Array<out PsiMethod>,
-                                            aClass: PsiClass,
-                                            strictSignatureSearch: Boolean): MethodTextOccurrenceProcessor {
-        return object: MethodTextOccurrenceProcessor(aClass, strictSignatureSearch, *methods) {
-            override fun processInexactReference(ref: PsiReference, refElement: PsiElement?, method: PsiMethod, consumer: Processor<PsiReference>): Boolean {
+    override fun getTextOccurrenceProcessor(
+        methods: Array<out PsiMethod>,
+        aClass: PsiClass,
+        strictSignatureSearch: Boolean
+    ): MethodTextOccurrenceProcessor {
+        return object : MethodTextOccurrenceProcessor(aClass, strictSignatureSearch, *methods) {
+            override fun processInexactReference(
+                ref: PsiReference,
+                refElement: PsiElement?,
+                method: PsiMethod,
+                consumer: Processor<in PsiReference>
+            ): Boolean {
                 val isGetter = JvmAbi.isGetterName(method.name)
 
                 fun isWrongAccessorReference(): Boolean {
@@ -80,7 +83,7 @@ class KotlinOverridingMethodReferenceSearcher : MethodUsagesSearcher() {
                         return readWriteAccess.isRead != isGetter && readWriteAccess.isWrite == isGetter
                     }
                     if (ref is SyntheticPropertyAccessorReference) {
-                        return (ref is SyntheticPropertyAccessorReference.Getter) != isGetter
+                        return ref.getter != isGetter
                     }
                     return false
                 }
@@ -102,16 +105,23 @@ class KotlinOverridingMethodReferenceSearcher : MethodUsagesSearcher() {
                     return true
                 }
 
-                var lightMethods = refElement.toLightMethods()
-                        .filterNot { it.hasModifierProperty(PsiModifier.FINAL) }
-                        .ifEmpty { return true }
-                if (refElement is KtProperty || refElement is KtParameter) {
-                    if (isWrongAccessorReference()) return true
-                    lightMethods = lightMethods.filter { JvmAbi.isGetterName(it.name) == isGetter }
+                fun countNonFinalLightMethods() = refElement
+                    .toLightMethods()
+                    .filterNot { it.hasModifierProperty(PsiModifier.FINAL) }
+
+                val lightMethods = when (refElement) {
+                    is KtProperty, is KtParameter -> {
+                        if (isWrongAccessorReference()) return true
+                        countNonFinalLightMethods().filter { JvmAbi.isGetterName(it.name) == isGetter }
+                    }
+
+                    is KtNamedFunction ->
+                        countNonFinalLightMethods().filter { it.name == method.name }
+
+                    else ->
+                        countNonFinalLightMethods()
                 }
-                if (refElement is KtNamedFunction) {
-                    lightMethods = lightMethods.filter { it.name == method.name }
-                }
+
 
                 return lightMethods.all { super.processInexactReference(ref, it, method, consumer) }
             }

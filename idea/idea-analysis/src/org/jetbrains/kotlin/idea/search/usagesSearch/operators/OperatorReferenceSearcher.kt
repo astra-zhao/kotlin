@@ -1,21 +1,11 @@
 /*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.search.usagesSearch.operators
 
+import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.progress.ProgressIndicatorProvider
 import com.intellij.openapi.progress.util.ProgressWrapper
 import com.intellij.psi.*
@@ -23,12 +13,16 @@ import com.intellij.psi.search.*
 import com.intellij.util.Processor
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
+import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.KotlinFileType
-import org.jetbrains.kotlin.idea.caches.resolve.getJavaOrKotlinMemberDescriptor
+import org.jetbrains.kotlin.idea.KotlinIdeaAnalysisBundle
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
+import org.jetbrains.kotlin.idea.caches.resolve.util.getJavaOrKotlinMemberDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.util.hasJavaResolutionFacade
+import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinRequestResultProcessor
 import org.jetbrains.kotlin.idea.search.restrictToKotlinSources
@@ -52,12 +46,12 @@ import org.jetbrains.kotlin.util.isValidOperator
 import java.util.*
 
 abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
-        protected val targetDeclaration: PsiElement,
-        private val searchScope: SearchScope,
-        private val consumer: Processor<PsiReference>,
-        private val optimizer: SearchRequestCollector,
-        private val options: KotlinReferencesSearchOptions,
-        private val wordsToSearch: List<String>
+    protected val targetDeclaration: PsiElement,
+    private val searchScope: SearchScope,
+    private val consumer: Processor<in PsiReference>,
+    private val optimizer: SearchRequestCollector,
+    private val options: KotlinReferencesSearchOptions,
+    private val wordsToSearch: List<String>
 ) {
     private val project = targetDeclaration.project
 
@@ -78,22 +72,21 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
 
     protected fun processReferenceElement(element: TReferenceElement): Boolean {
         val reference = extractReference(element) ?: return true
-        testLog?.add("Resolved ${logPresentation(element)}")
-        if (reference.isReferenceTo(targetDeclaration)) {
-            return consumer.process(reference)
-        }
-        else {
-            return true
+        testLog { "Resolved ${logPresentation(element)}" }
+        return if (reference.isReferenceTo(targetDeclaration)) {
+            consumer.process(reference)
+        } else {
+            true
         }
     }
 
     companion object {
         fun create(
-                declaration: PsiElement,
-                searchScope: SearchScope,
-                consumer: Processor<PsiReference>,
-                optimizer: SearchRequestCollector,
-                options: KotlinReferencesSearchOptions
+            declaration: PsiElement,
+            searchScope: SearchScope,
+            consumer: Processor<in PsiReference>,
+            optimizer: SearchRequestCollector,
+            options: KotlinReferencesSearchOptions
         ): OperatorReferenceSearcher<*>? {
             return runReadAction {
                 if (declaration.isValid)
@@ -104,13 +97,13 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
         }
 
         private fun createInReadAction(
-                declaration: PsiElement,
-                searchScope: SearchScope,
-                consumer: Processor<PsiReference>,
-                optimizer: SearchRequestCollector,
-                options: KotlinReferencesSearchOptions
+            declaration: PsiElement,
+            searchScope: SearchScope,
+            consumer: Processor<in PsiReference>,
+            optimizer: SearchRequestCollector,
+            options: KotlinReferencesSearchOptions
         ): OperatorReferenceSearcher<*>? {
-            val functionName =  when (declaration) {
+            val functionName = when (declaration) {
                 is KtNamedFunction -> declaration.name
                 is PsiMethod -> declaration.name
                 else -> null
@@ -121,8 +114,7 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
 
             val declarationToUse = if (declaration is KtLightMethod) {
                 declaration.kotlinOrigin ?: return null
-            }
-            else {
+            } else {
                 declaration
             }
 
@@ -130,12 +122,12 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
         }
 
         private fun createInReadAction(
-                declaration: PsiElement,
-                name: Name,
-                consumer: Processor<PsiReference>,
-                optimizer: SearchRequestCollector,
-                options: KotlinReferencesSearchOptions,
-                searchScope: SearchScope
+            declaration: PsiElement,
+            name: Name,
+            consumer: Processor<in PsiReference>,
+            optimizer: SearchRequestCollector,
+            options: KotlinReferencesSearchOptions,
+            searchScope: SearchScope
         ): OperatorReferenceSearcher<*>? {
             if (DataClassDescriptorResolver.isComponentLike(name)) {
                 if (!options.searchForComponentConventions) return null
@@ -152,7 +144,7 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
             when {
                 binaryOp != null -> {
                     val counterpartAssignmentOp = OperatorConventions.ASSIGNMENT_OPERATION_COUNTERPARTS.inverse()[binaryOp]
-                    val operationTokens = listOf(binaryOp, counterpartAssignmentOp).filterNotNull()
+                    val operationTokens = listOfNotNull(binaryOp, counterpartAssignmentOp)
                     return BinaryOperatorReferenceSearcher(declaration, operationTokens, searchScope, consumer, optimizer, options)
                 }
 
@@ -175,10 +167,24 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
                     return ContainsOperatorReferenceSearcher(declaration, searchScope, consumer, optimizer, options)
 
                 name == OperatorNameConventions.EQUALS ->
-                    return BinaryOperatorReferenceSearcher(declaration, listOf(KtTokens.EQEQ, KtTokens.EXCLEQ), searchScope, consumer, optimizer, options)
+                    return BinaryOperatorReferenceSearcher(
+                        declaration,
+                        listOf(KtTokens.EQEQ, KtTokens.EXCLEQ),
+                        searchScope,
+                        consumer,
+                        optimizer,
+                        options
+                    )
 
                 name == OperatorNameConventions.COMPARE_TO ->
-                    return BinaryOperatorReferenceSearcher(declaration, listOf(KtTokens.LT, KtTokens.GT, KtTokens.LTEQ, KtTokens.GTEQ), searchScope, consumer, optimizer, options)
+                    return BinaryOperatorReferenceSearcher(
+                        declaration,
+                        listOf(KtTokens.LT, KtTokens.GT, KtTokens.LTEQ, KtTokens.GTEQ),
+                        searchScope,
+                        consumer,
+                        optimizer,
+                        options
+                    )
 
                 name == OperatorNameConventions.ITERATOR ->
                     return IteratorOperatorReferenceSearcher(declaration, searchScope, consumer, optimizer, options)
@@ -192,37 +198,62 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
 
         }
 
-        //TODO: check no light elements here
         private object SearchesInProgress : ThreadLocal<HashSet<PsiElement>>() {
             override fun initialValue() = HashSet<PsiElement>()
         }
     }
 
     protected open fun resolveTargetToDescriptor(): FunctionDescriptor? {
-        return when (targetDeclaration) {
-            is KtDeclaration -> targetDeclaration.resolveToDescriptorIfAny(BodyResolveMode.FULL)
-            is PsiMember -> targetDeclaration.getJavaOrKotlinMemberDescriptor()
+        return when {
+            targetDeclaration is KtDeclaration -> targetDeclaration.resolveToDescriptorIfAny(BodyResolveMode.FULL)
+            targetDeclaration is PsiMember && targetDeclaration.hasJavaResolutionFacade() ->
+                targetDeclaration.getJavaOrKotlinMemberDescriptor()
             else -> null
-        }  as? FunctionDescriptor
+        } as? FunctionDescriptor
     }
 
     fun run() {
+        val receiverType = runReadAction { extractReceiverType() } ?: return
+        val psiClass = runReadAction { receiverType.toPsiClass() }
+
         val inProgress = SearchesInProgress.get()
-        if (!inProgress.add(targetDeclaration)) return //TODO: it's not quite correct
+        if (psiClass != null) {
+            if (!inProgress.add(psiClass)) {
+                testLog {
+                    "ExpressionOfTypeProcessor is already started for ${runReadAction { psiClass.qualifiedName }}. Exit for operator ${logPresentation(
+                        targetDeclaration
+                    )}."
+                }
+                return
+            }
+        } else {
+            if (!inProgress.add(targetDeclaration)) {
+                testLog { "ExpressionOfTypeProcessor is already started for operator ${logPresentation(targetDeclaration)}. Exit." }
+                return //TODO: it's not quite correct
+            }
+        }
 
         try {
-            val receiverType = runReadAction { extractReceiverType() } ?: return
-
             ExpressionsOfTypeProcessor(
-                    receiverType,
-                    searchScope,
-                    project,
-                    possibleMatchHandler = { expression -> processPossibleReceiverExpression(expression) },
-                    possibleMatchesInScopeHandler = { searchScope -> doPlainSearch(searchScope) }
+                receiverType,
+                psiClass,
+                searchScope,
+                project,
+                possibleMatchHandler = { expression -> processPossibleReceiverExpression(expression) },
+                possibleMatchesInScopeHandler = { searchScope -> doPlainSearch(searchScope) }
             ).run()
+        } finally {
+            inProgress.remove(psiClass ?: targetDeclaration)
         }
-        finally {
-            inProgress.remove(targetDeclaration)
+    }
+
+    private fun FuzzyType.toPsiClass(): PsiClass? {
+        val classDescriptor = type.constructor.declarationDescriptor ?: return null
+        val classDeclaration = DescriptorToSourceUtilsIde.getAnyDeclaration(project, classDescriptor)
+        return when (classDeclaration) {
+            is PsiClass -> classDeclaration
+            is KtClassOrObject -> classDeclaration.toLightClass()
+            else -> null
         }
     }
 
@@ -231,15 +262,14 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
 
         return if (descriptor.isExtension) {
             descriptor.fuzzyExtensionReceiverType()!!
-        }
-        else {
+        } else {
             val classDescriptor = descriptor.containingDeclaration as? ClassDescriptor ?: return null
             classDescriptor.defaultType.toFuzzyType(classDescriptor.typeConstructor.parameters)
         }
     }
 
     private fun doPlainSearch(scope: SearchScope) {
-        testLog?.add("Used plain search of ${logPresentation(targetDeclaration)} in ${scope.logPresentation()}")
+        testLog { "Used plain search of ${logPresentation(targetDeclaration)} in ${scope.logPresentation()}" }
 
         if (scope is LocalSearchScope) {
             for (element in scope.scope) {
@@ -257,30 +287,37 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
                             (element.containingFile as KtFile).getResolutionFacade().analyze(elements, BodyResolveMode.PARTIAL)
 
                             refs
-                                    .filter { it.isReferenceTo(targetDeclaration) }
-                                    .forEach { consumer.process(it) }
+                                .filter { it.isReferenceTo(targetDeclaration) }
+                                .forEach { consumer.process(it) }
                         }
                     }
                 }
             }
-        }
-        else {
+        } else {
             scope as GlobalSearchScope
             if (wordsToSearch.isNotEmpty()) {
                 val unwrappedElement = targetDeclaration.namedUnwrappedElement ?: return
-                val resultProcessor = KotlinRequestResultProcessor(unwrappedElement,
-                                                                   filter = { ref -> isReferenceToCheck(ref) },
-                                                                   options = options)
+                val resultProcessor = KotlinRequestResultProcessor(
+                    unwrappedElement,
+                    filter = { ref -> isReferenceToCheck(ref) },
+                    options = options
+                )
                 wordsToSearch.forEach {
-                    optimizer.searchWord(it, scope.restrictToKotlinSources(), UsageSearchContext.IN_CODE, true, unwrappedElement, resultProcessor)
+                    optimizer.searchWord(
+                        it,
+                        scope.restrictToKotlinSources(),
+                        UsageSearchContext.IN_CODE,
+                        true,
+                        unwrappedElement,
+                        resultProcessor
+                    )
                 }
-            }
-            else {
+            } else {
                 val psiManager = PsiManager.getInstance(project)
                 // we must unwrap progress indicator because ProgressWrapper does not do anything on changing text and fraction
                 val progress = ProgressWrapper.unwrap(ProgressIndicatorProvider.getGlobalProgressIndicator())
                 progress?.pushState()
-                progress?.text = "Searching for implicit usages..."
+                progress?.text = KotlinIdeaAnalysisBundle.message("searching.for.implicit.usages")
 
                 try {
                     val files = runReadAction { FileTypeIndex.getFiles(KotlinFileType.INSTANCE, scope) }
@@ -297,8 +334,7 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
                             }
                         }
                     }
-                }
-                finally {
+                } finally {
                     progress?.popState()
                 }
             }
@@ -311,8 +347,9 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
 
             is LocalSearchScope -> {
                 scope
-                        .map { element ->
-                            "    " + when (element) {
+                    .map { element ->
+                        "    " + runReadAction {
+                            when (element) {
                                 is KtFunctionLiteral -> element.text
                                 is KtWhenEntry -> {
                                     if (element.isElse)
@@ -324,9 +361,10 @@ abstract class OperatorReferenceSearcher<TReferenceElement : KtElement>(
                                 else -> element.toString()
                             }
                         }
-                        .toList()
-                        .sorted()
-                        .joinToString("\n", "LocalSearchScope:\n")
+                    }
+                    .toList()
+                    .sorted()
+                    .joinToString("\n", "LocalSearchScope:\n")
             }
 
             else -> this.displayName

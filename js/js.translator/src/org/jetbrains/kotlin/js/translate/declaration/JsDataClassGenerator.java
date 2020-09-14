@@ -17,31 +17,25 @@
 package org.jetbrains.kotlin.js.translate.declaration;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.backend.common.DataClassMethodGenerator;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.js.backend.ast.*;
 import org.jetbrains.kotlin.js.translate.context.Namer;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
-import org.jetbrains.kotlin.js.translate.utils.UtilsKt;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
 import org.jetbrains.kotlin.psi.KtParameter;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingContextUtils;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.resolve.calls.components.ArgumentsUtilsKt;
+import org.jetbrains.kotlin.resolve.source.KotlinSourceElementKt;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.jetbrains.kotlin.js.translate.utils.JsAstUtils.and;
-import static org.jetbrains.kotlin.js.translate.utils.JsAstUtils.or;
-
-class JsDataClassGenerator extends DataClassMethodGenerator {
-    private final TranslationContext context;
+class JsDataClassGenerator extends JsEqualsHashcodeToStringGenerator {
 
     JsDataClassGenerator(KtClassOrObject klass, TranslationContext context) {
-        super(klass, context.bindingContext());
-        this.context = context;
+        super(klass, context);
     }
 
     @Override
@@ -51,7 +45,9 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
 
         JsFunction functionObject = generateJsMethod(function);
         JsExpression returnExpression = JsAstUtils.pureFqn(context.getNameForDescriptor(propertyDescriptor), new JsThisRef());
-        functionObject.getBody().getStatements().add(new JsReturn(returnExpression));
+        JsReturn returnStatement = new JsReturn(returnExpression);
+        returnStatement.setSource(KotlinSourceElementKt.getPsi(parameter.getSource()));
+        functionObject.getBody().getStatements().add(returnStatement);
     }
 
     @Override
@@ -79,7 +75,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
             JsExpression argumentValue;
             JsExpression parameterValue = new JsNameRef(paramName);
             if (!constructorParam.hasValOrVar()) {
-                assert !DescriptorUtilsKt.hasDefaultValue(function.getValueParameters().get(i));
+                assert !ArgumentsUtilsKt.hasDefaultValue(function.getValueParameters().get(i));
                 // Caller cannot rely on default value and pass undefined here.
                 argumentValue = parameterValue;
             }
@@ -87,7 +83,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
                 JsExpression defaultCondition = JsAstUtils.equality(new JsNameRef(paramName), Namer.getUndefinedExpression());
                 argumentValue = new JsConditional(defaultCondition, new JsNameRef(fieldName, new JsThisRef()), parameterValue);
             }
-            constructorArguments.add(argumentValue);
+            constructorArguments.add(argumentValue.source(constructorParam));
         }
 
         ClassDescriptor classDescriptor = (ClassDescriptor) function.getContainingDeclaration();
@@ -100,97 +96,10 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
         if (context.shouldBeDeferred(constructor)) {
             context.deferConstructorCall(constructor, returnExpression.getArguments());
         }
-        functionObj.getBody().getStatements().add(new JsReturn(returnExpression));
-    }
+        returnExpression.setSource(getDeclaration());
 
-    @Override
-    public void generateToStringMethod(@NotNull FunctionDescriptor function, @NotNull List<? extends PropertyDescriptor> classProperties) {
-        // TODO: relax this limitation, with the data generation logic fixed.
-        assert !classProperties.isEmpty();
-        JsFunction functionObj = generateJsMethod(function);
-
-        JsExpression result = null;
-        for (int i = 0; i < classProperties.size(); i++) {
-            String printName = classProperties.get(i).getName().asString();
-            JsName name = context.getNameForDescriptor(classProperties.get(i));
-            JsExpression literal = new JsStringLiteral((i == 0 ? (getClassDescriptor().getName() + "(") : ", ") + printName + "=");
-            JsExpression expr = new JsInvocation(context.namer().kotlin("toString"), new JsNameRef(name, new JsThisRef()));
-            JsExpression component = JsAstUtils.sum(literal, expr);
-            if (result == null) {
-                result = component;
-            }
-            else {
-                result = JsAstUtils.sum(result, component);
-            }
-        }
-        assert result != null;
-        result = JsAstUtils.sum(result, new JsStringLiteral(")"));
-        functionObj.getBody().getStatements().add(new JsReturn(result));
-    }
-
-    @Override
-    public void generateHashCodeMethod(@NotNull FunctionDescriptor function, @NotNull List<? extends PropertyDescriptor> classProperties) {
-        JsFunction functionObj = generateJsMethod(function);
-
-        List<JsStatement> statements = functionObj.getBody().getStatements();
-
-        JsName varName = functionObj.getScope().declareName("result");
-
-        statements.add(new JsVars(new JsVars.JsVar(varName, new JsIntLiteral(0))));
-
-        for (PropertyDescriptor prop : classProperties) {
-            // TODO: we should statically check that we can call hashCode method directly.
-            JsName name = context.getNameForDescriptor(prop);
-            JsExpression component = new JsInvocation(context.namer().kotlin("hashCode"), new JsNameRef(name, new JsThisRef()));
-            JsExpression newHashValue = JsAstUtils.sum(JsAstUtils.mul(new JsNameRef(varName), new JsIntLiteral(31)), component);
-            JsExpression assignment = JsAstUtils.assignment(new JsNameRef(varName),
-                                                            new JsBinaryOperation(JsBinaryOperator.BIT_OR, newHashValue,
-                                                                                  new JsIntLiteral(0)));
-            statements.add(assignment.makeStmt());
-        }
-
-        statements.add(new JsReturn(new JsNameRef(varName)));
-    }
-
-    @Override
-    public void generateEqualsMethod(@NotNull FunctionDescriptor function, @NotNull List<? extends PropertyDescriptor> classProperties) {
-        assert !classProperties.isEmpty();
-        JsFunction functionObj = generateJsMethod(function);
-        JsFunctionScope funScope = functionObj.getScope();
-
-        JsName paramName = funScope.declareName("other");
-        functionObj.getParameters().add(new JsParameter(paramName));
-
-        JsExpression referenceEqual = JsAstUtils.equality(new JsThisRef(), new JsNameRef(paramName));
-        JsExpression isNotNull = JsAstUtils.inequality(new JsNameRef(paramName), new JsNullLiteral());
-        JsExpression otherIsObject = JsAstUtils.typeOfIs(paramName.makeRef(), new JsStringLiteral("object"));
-        JsExpression prototypeEqual =
-                JsAstUtils.equality(new JsInvocation(new JsNameRef("getPrototypeOf", new JsNameRef("Object")), new JsThisRef()),
-                                    new JsInvocation(new JsNameRef("getPrototypeOf", new JsNameRef("Object")), new JsNameRef(paramName)));
-
-        JsExpression fieldChain = null;
-        for (PropertyDescriptor prop : classProperties) {
-            JsName name = context.getNameForDescriptor(prop);
-            JsExpression next = new JsInvocation(context.namer().kotlin("equals"),
-                                                 new JsNameRef(name, new JsThisRef()),
-                                                 new JsNameRef(name, new JsNameRef(paramName)));
-            if (fieldChain == null) {
-                fieldChain = next;
-            }
-            else {
-                fieldChain = and(fieldChain, next);
-            }
-        }
-        assert fieldChain != null;
-
-        JsExpression returnExpression = or(referenceEqual, and(isNotNull, and(otherIsObject, and(prototypeEqual, fieldChain))));
-        functionObj.getBody().getStatements().add(new JsReturn(returnExpression));
-    }
-
-    private JsFunction generateJsMethod(@NotNull FunctionDescriptor functionDescriptor) {
-        JsFunction functionObject = context.createRootScopedFunction(functionDescriptor);
-        ClassDescriptor containingClass = (ClassDescriptor) functionDescriptor.getContainingDeclaration();
-        context.addDeclarationStatement(UtilsKt.addFunctionToPrototype(context, containingClass, functionDescriptor, functionObject));
-        return functionObject;
+        JsReturn returnStatement = new JsReturn(returnExpression);
+        returnStatement.setSource(getDeclaration());
+        functionObj.getBody().getStatements().add(returnStatement);
     }
 }

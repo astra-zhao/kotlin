@@ -17,44 +17,55 @@
 package org.jetbrains.kotlin.ir.declarations.impl
 
 import org.jetbrains.kotlin.descriptors.VariableDescriptor
+import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
+import org.jetbrains.kotlin.ir.declarations.IrFactory
 import org.jetbrains.kotlin.ir.declarations.IrVariable
+import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.symbols.IrVariableSymbol
-import org.jetbrains.kotlin.ir.symbols.impl.IrVariableSymbolImpl
+import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
+import org.jetbrains.kotlin.name.Name
 
 class IrVariableImpl(
-        startOffset: Int,
-        endOffset: Int,
-        origin: IrDeclarationOrigin,
-        override val symbol: IrVariableSymbol
-) : IrDeclarationBase(startOffset, endOffset, origin), IrVariable {
-    constructor(startOffset: Int, endOffset: Int, origin: IrDeclarationOrigin, descriptor: VariableDescriptor) :
-            this(startOffset, endOffset, origin, IrVariableSymbolImpl(descriptor))
+    override val startOffset: Int,
+    override val endOffset: Int,
+    override var origin: IrDeclarationOrigin,
+    override val symbol: IrVariableSymbol,
+    override val name: Name,
+    override val type: IrType,
+    override val isVar: Boolean,
+    override val isConst: Boolean,
+    override val isLateinit: Boolean
+) : IrVariable() {
+    private var _parent: IrDeclarationParent? = null
+    override var parent: IrDeclarationParent
+        get() = _parent
+            ?: throw UninitializedPropertyAccessException("Parent not initialized: $this")
+        set(v) {
+            _parent = v
+        }
 
-    constructor(
-            startOffset: Int,
-            endOffset: Int,
-            origin: IrDeclarationOrigin,
-            descriptor: VariableDescriptor,
-            initializer: IrExpression?
-    ) : this(startOffset, endOffset, origin, descriptor) {
-        this.initializer = initializer
-    }
+    override var annotations: List<IrConstructorCall> = emptyList()
 
     init {
         symbol.bind(this)
     }
 
-    override val descriptor: VariableDescriptor get() = symbol.descriptor
+    @ObsoleteDescriptorBasedAPI
+    override val descriptor: VariableDescriptor
+        get() = symbol.descriptor
 
     override var initializer: IrExpression? = null
 
-    override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R {
-        return visitor.visitVariable(this, data)
-    }
+    override val factory: IrFactory
+        get() = error("Create IrVariableImpl directly")
+
+    override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R =
+        visitor.visitVariable(this, data)
 
     override fun <D> acceptChildren(visitor: IrElementVisitor<Unit, D>, data: D) {
         initializer?.accept(visitor, data)

@@ -1,27 +1,16 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2018 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.resolve.jvm;
 
+import kotlin.collections.CollectionsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.builtins.PrimitiveType;
 import org.jetbrains.org.objectweb.asm.Type;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class AsmTypes {
     private static final Map<Class<?>, Type> TYPES_MAP = new HashMap<>();
@@ -30,15 +19,21 @@ public class AsmTypes {
     public static final Type JAVA_STRING_TYPE = getType(String.class);
     public static final Type JAVA_THROWABLE_TYPE = getType(Throwable.class);
     public static final Type JAVA_CLASS_TYPE = getType(Class.class);
+    public static final Type JAVA_CLASS_ARRAY_TYPE = Type.getObjectType("[" + JAVA_CLASS_TYPE.getDescriptor());
     public static final Type ENUM_TYPE = getType(Enum.class);
     public static final Type NUMBER_TYPE = getType(Number.class);
     public static final Type BOOLEAN_WRAPPER_TYPE = getType(Boolean.class);
     public static final Type CHARACTER_WRAPPER_TYPE = getType(Character.class);
+    public static final Type VOID_WRAPPER_TYPE = getType(Void.class);
 
     public static final Type UNIT_TYPE = Type.getObjectType("kotlin/Unit");
 
     public static final Type LAMBDA = Type.getObjectType("kotlin/jvm/internal/Lambda");
+    public static final Type FUNCTION_ADAPTER = Type.getObjectType("kotlin/jvm/internal/FunctionAdapter");
+
     public static final Type FUNCTION_REFERENCE = Type.getObjectType("kotlin/jvm/internal/FunctionReference");
+    public static final Type FUNCTION_REFERENCE_IMPL = Type.getObjectType("kotlin/jvm/internal/FunctionReferenceImpl");
+
     public static final Type PROPERTY_REFERENCE0 = Type.getObjectType("kotlin/jvm/internal/PropertyReference0");
     public static final Type PROPERTY_REFERENCE1 = Type.getObjectType("kotlin/jvm/internal/PropertyReference1");
     public static final Type PROPERTY_REFERENCE2 = Type.getObjectType("kotlin/jvm/internal/PropertyReference2");
@@ -46,6 +41,9 @@ public class AsmTypes {
     public static final Type MUTABLE_PROPERTY_REFERENCE1 = Type.getObjectType("kotlin/jvm/internal/MutablePropertyReference1");
     public static final Type MUTABLE_PROPERTY_REFERENCE2 = Type.getObjectType("kotlin/jvm/internal/MutablePropertyReference2");
 
+    public static final Type FUNCTION = Type.getObjectType("kotlin/Function");
+    public static final Type FUNCTION0 = Type.getObjectType("kotlin/jvm/functions/Function0");
+    public static final Type FUNCTION1 = Type.getObjectType("kotlin/jvm/functions/Function1");
 
     public static final Type[] PROPERTY_REFERENCE_IMPL = {
             Type.getObjectType("kotlin/jvm/internal/PropertyReference0Impl"),
@@ -60,6 +58,7 @@ public class AsmTypes {
 
     public static final Type K_CLASS_TYPE = reflect("KClass");
     public static final Type K_CLASS_ARRAY_TYPE = Type.getObjectType("[" + K_CLASS_TYPE.getDescriptor());
+    public static final Type K_CLASSIFIER_TYPE = reflect("KClassifier");
     public static final Type K_DECLARATION_CONTAINER_TYPE = reflect("KDeclarationContainer");
 
     public static final Type K_FUNCTION = reflect("KFunction");
@@ -71,6 +70,14 @@ public class AsmTypes {
     public static final Type K_MUTABLE_PROPERTY0_TYPE = reflect("KMutableProperty0");
     public static final Type K_MUTABLE_PROPERTY1_TYPE = reflect("KMutableProperty1");
     public static final Type K_MUTABLE_PROPERTY2_TYPE = reflect("KMutableProperty2");
+
+    public static final Type K_TYPE = reflect("KType");
+    public static final Type K_TYPE_PROJECTION = reflect("KTypeProjection");
+    public static final Type K_TYPE_PROJECTION_COMPANION = reflect("KTypeProjection$Companion");
+    public static final Type K_TYPE_PARAMETER = reflect("KTypeParameter");
+    public static final Type K_VARIANCE = reflect("KVariance");
+
+    public static final Type SUSPEND_FUNCTION_TYPE = Type.getObjectType("kotlin/coroutines/jvm/internal/SuspendFunction");
 
     public static final String REFLECTION = "kotlin/jvm/internal/Reflection";
 
@@ -121,6 +128,16 @@ public class AsmTypes {
     @NotNull
     public static Type getType(@NotNull Class<?> javaClass) {
         return TYPES_MAP.computeIfAbsent(javaClass, k -> Type.getType(javaClass));
+    }
+
+    public static final List<Type> OPTIMIZED_PROPERTY_REFERENCE_SUPERTYPES =
+            CollectionsKt.flatten(Arrays.asList(
+                    Arrays.asList(PROPERTY_REFERENCE_IMPL),
+                    Arrays.asList(MUTABLE_PROPERTY_REFERENCE_IMPL)
+            ));
+
+    public static boolean isOptimizedPropertyReferenceSupertype(@NotNull Type type) {
+        return OPTIMIZED_PROPERTY_REFERENCE_SUPERTYPES.contains(type);
     }
 
     private AsmTypes() {

@@ -24,91 +24,86 @@ import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.findUsages.UsageTypeEnum.*
 
 object KotlinUsageTypeProvider : UsageTypeProviderEx {
-    override fun getUsageType(element: PsiElement?): UsageType? {
-        return getUsageType(element, UsageTarget.EMPTY_ARRAY)
-    }
+    override fun getUsageType(element: PsiElement?): UsageType? = getUsageType(element, UsageTarget.EMPTY_ARRAY)
 
     override fun getUsageType(element: PsiElement?, targets: Array<out UsageTarget>): UsageType? {
-        val usageType = UsageTypeUtils.getUsageType(element)
-        if (usageType == null) return null
+        val usageType = UsageTypeUtils.getUsageType(element) ?: return null
         return convertEnumToUsageType(usageType)
     }
 
-    fun convertEnumToUsageType(usageType: UsageTypeEnum): UsageType {
-        return when (usageType) {
-            TYPE_CONSTRAINT -> KotlinUsageTypes.TYPE_CONSTRAINT
-            VALUE_PARAMETER_TYPE -> KotlinUsageTypes.VALUE_PARAMETER_TYPE
-            NON_LOCAL_PROPERTY_TYPE -> KotlinUsageTypes.NON_LOCAL_PROPERTY_TYPE
-            FUNCTION_RETURN_TYPE -> KotlinUsageTypes.FUNCTION_RETURN_TYPE
-            SUPER_TYPE -> KotlinUsageTypes.SUPER_TYPE
-            IS -> KotlinUsageTypes.IS
-            CLASS_OBJECT_ACCESS -> KotlinUsageTypes.CLASS_OBJECT_ACCESS
-            COMPANION_OBJECT_ACCESS -> KotlinUsageTypes.COMPANION_OBJECT_ACCESS
-            EXTENSION_RECEIVER_TYPE -> KotlinUsageTypes.EXTENSION_RECEIVER_TYPE
-            SUPER_TYPE_QUALIFIER -> KotlinUsageTypes.SUPER_TYPE_QUALIFIER
-            TYPE_ALIAS -> KotlinUsageTypes.TYPE_ALIAS
+    private fun convertEnumToUsageType(usageType: UsageTypeEnum): UsageType = when (usageType) {
+        TYPE_CONSTRAINT -> KotlinUsageTypes.TYPE_CONSTRAINT
+        VALUE_PARAMETER_TYPE -> KotlinUsageTypes.VALUE_PARAMETER_TYPE
+        NON_LOCAL_PROPERTY_TYPE -> KotlinUsageTypes.NON_LOCAL_PROPERTY_TYPE
+        FUNCTION_RETURN_TYPE -> KotlinUsageTypes.FUNCTION_RETURN_TYPE
+        SUPER_TYPE -> KotlinUsageTypes.SUPER_TYPE
+        IS -> KotlinUsageTypes.IS
+        CLASS_OBJECT_ACCESS -> KotlinUsageTypes.CLASS_OBJECT_ACCESS
+        COMPANION_OBJECT_ACCESS -> KotlinUsageTypes.COMPANION_OBJECT_ACCESS
+        EXTENSION_RECEIVER_TYPE -> KotlinUsageTypes.EXTENSION_RECEIVER_TYPE
+        SUPER_TYPE_QUALIFIER -> KotlinUsageTypes.SUPER_TYPE_QUALIFIER
+        TYPE_ALIAS -> KotlinUsageTypes.TYPE_ALIAS
 
-            FUNCTION_CALL -> KotlinUsageTypes.FUNCTION_CALL
-            IMPLICIT_GET -> KotlinUsageTypes.IMPLICIT_GET
-            IMPLICIT_SET -> KotlinUsageTypes.IMPLICIT_SET
-            IMPLICIT_INVOKE -> KotlinUsageTypes.IMPLICIT_INVOKE
-            IMPLICIT_ITERATION -> KotlinUsageTypes.IMPLICIT_ITERATION
-            PROPERTY_DELEGATION -> KotlinUsageTypes.PROPERTY_DELEGATION
+        FUNCTION_CALL -> KotlinUsageTypes.FUNCTION_CALL
+        IMPLICIT_GET -> KotlinUsageTypes.IMPLICIT_GET
+        IMPLICIT_SET -> KotlinUsageTypes.IMPLICIT_SET
+        IMPLICIT_INVOKE -> KotlinUsageTypes.IMPLICIT_INVOKE
+        IMPLICIT_ITERATION -> KotlinUsageTypes.IMPLICIT_ITERATION
+        PROPERTY_DELEGATION -> KotlinUsageTypes.PROPERTY_DELEGATION
 
-            RECEIVER -> KotlinUsageTypes.RECEIVER
-            DELEGATE -> KotlinUsageTypes.DELEGATE
+        RECEIVER -> KotlinUsageTypes.RECEIVER
+        DELEGATE -> KotlinUsageTypes.DELEGATE
 
-            PACKAGE_DIRECTIVE -> KotlinUsageTypes.PACKAGE_DIRECTIVE
-            PACKAGE_MEMBER_ACCESS -> KotlinUsageTypes.PACKAGE_MEMBER_ACCESS
+        PACKAGE_DIRECTIVE -> KotlinUsageTypes.PACKAGE_DIRECTIVE
+        PACKAGE_MEMBER_ACCESS -> KotlinUsageTypes.PACKAGE_MEMBER_ACCESS
 
-            CALLABLE_REFERENCE -> KotlinUsageTypes.CALLABLE_REFERENCE
+        CALLABLE_REFERENCE -> KotlinUsageTypes.CALLABLE_REFERENCE
 
-            READ -> UsageType.READ
-            WRITE -> UsageType.WRITE
-            CLASS_IMPORT -> UsageType.CLASS_IMPORT
-            CLASS_LOCAL_VAR_DECLARATION -> UsageType.CLASS_LOCAL_VAR_DECLARATION
-            TYPE_PARAMETER -> UsageType.TYPE_PARAMETER
-            CLASS_CAST_TO -> UsageType.CLASS_CAST_TO
-            ANNOTATION -> UsageType.ANNOTATION
-            CLASS_NEW_OPERATOR -> UsageType.CLASS_NEW_OPERATOR
-            NAMED_ARGUMENT -> KotlinUsageTypes.NAMED_ARGUMENT
+        READ -> UsageType.READ
+        WRITE -> UsageType.WRITE
+        CLASS_IMPORT -> UsageType.CLASS_IMPORT
+        CLASS_LOCAL_VAR_DECLARATION -> UsageType.CLASS_LOCAL_VAR_DECLARATION
+        TYPE_PARAMETER -> UsageType.TYPE_PARAMETER
+        CLASS_CAST_TO -> UsageType.CLASS_CAST_TO
+        ANNOTATION -> UsageType.ANNOTATION
+        CLASS_NEW_OPERATOR -> UsageType.CLASS_NEW_OPERATOR
+        NAMED_ARGUMENT -> KotlinUsageTypes.NAMED_ARGUMENT
 
-            USAGE_IN_STRING_LITERAL -> UsageType.LITERAL_USAGE
-        }
+        USAGE_IN_STRING_LITERAL -> UsageType.LITERAL_USAGE
     }
 }
 
 object KotlinUsageTypes {
     // types
-    val TYPE_CONSTRAINT = UsageType(KotlinBundle.message("usageType.type.constraint"))
-    val VALUE_PARAMETER_TYPE = UsageType(KotlinBundle.message("usageType.value.parameter.type"))
-    val NON_LOCAL_PROPERTY_TYPE = UsageType(KotlinBundle.message("usageType.nonLocal.property.type"))
-    val FUNCTION_RETURN_TYPE = UsageType(KotlinBundle.message("usageType.function.return.type"))
-    val SUPER_TYPE = UsageType(KotlinBundle.message("usageType.superType"))
-    val IS = UsageType(KotlinBundle.message("usageType.is"))
-    val CLASS_OBJECT_ACCESS = UsageType(KotlinBundle.message("usageType.class.object"))
-    val COMPANION_OBJECT_ACCESS = UsageType(KotlinBundle.message("usageType.companion.object"))
-    val EXTENSION_RECEIVER_TYPE = UsageType(KotlinBundle.message("usageType.extension.receiver.type"))
-    val SUPER_TYPE_QUALIFIER = UsageType(KotlinBundle.message("usageType.super.type.qualifier"))
-    val TYPE_ALIAS = UsageType("Type alias")
+    val TYPE_CONSTRAINT = UsageType(KotlinBundle.lazyMessage("find.usages.type.type.constraint"))
+    val VALUE_PARAMETER_TYPE = UsageType(KotlinBundle.lazyMessage("find.usages.type.value.parameter.type"))
+    val NON_LOCAL_PROPERTY_TYPE = UsageType(KotlinBundle.lazyMessage("find.usages.type.nonLocal.property.type"))
+    val FUNCTION_RETURN_TYPE = UsageType(KotlinBundle.lazyMessage("find.usages.type.function.return.type"))
+    val SUPER_TYPE = UsageType(KotlinBundle.lazyMessage("find.usages.type.superType"))
+    val IS = UsageType(KotlinBundle.lazyMessage("find.usages.type.is"))
+    val CLASS_OBJECT_ACCESS = UsageType(KotlinBundle.lazyMessage("find.usages.type.class.object"))
+    val COMPANION_OBJECT_ACCESS = UsageType(KotlinBundle.lazyMessage("find.usages.type.companion.object"))
+    val EXTENSION_RECEIVER_TYPE = UsageType(KotlinBundle.lazyMessage("find.usages.type.extension.receiver.type"))
+    val SUPER_TYPE_QUALIFIER = UsageType(KotlinBundle.lazyMessage("find.usages.type.super.type.qualifier"))
+    val TYPE_ALIAS = UsageType(KotlinBundle.lazyMessage("find.usages.type.type.alias"))
 
     // functions
-    val FUNCTION_CALL = UsageType(KotlinBundle.message("usageType.function.call"))
-    val IMPLICIT_GET = UsageType(KotlinBundle.message("usageType.implicit.get"))
-    val IMPLICIT_SET = UsageType(KotlinBundle.message("usageType.implicit.set"))
-    val IMPLICIT_INVOKE = UsageType(KotlinBundle.message("usageType.implicit.invoke"))
-    val IMPLICIT_ITERATION = UsageType(KotlinBundle.message("usageType.implicit.iteration"))
-    val PROPERTY_DELEGATION = UsageType(KotlinBundle.message("usageType.property.delegation"))
+    val FUNCTION_CALL = UsageType(KotlinBundle.lazyMessage("find.usages.type.function.call"))
+    val IMPLICIT_GET = UsageType(KotlinBundle.lazyMessage("find.usages.type.implicit.get"))
+    val IMPLICIT_SET = UsageType(KotlinBundle.lazyMessage("find.usages.type.implicit.set"))
+    val IMPLICIT_INVOKE = UsageType(KotlinBundle.lazyMessage("find.usages.type.implicit.invoke"))
+    val IMPLICIT_ITERATION = UsageType(KotlinBundle.lazyMessage("find.usages.type.implicit.iteration"))
+    val PROPERTY_DELEGATION = UsageType(KotlinBundle.lazyMessage("find.usages.type.property.delegation"))
 
     // values
-    val RECEIVER = UsageType(KotlinBundle.message("usageType.receiver"))
-    val DELEGATE = UsageType(KotlinBundle.message("usageType.delegate"))
+    val RECEIVER = UsageType(KotlinBundle.lazyMessage("find.usages.type.receiver"))
+    val DELEGATE = UsageType(KotlinBundle.lazyMessage("find.usages.type.delegate"))
 
     // packages
-    val PACKAGE_DIRECTIVE = UsageType(KotlinBundle.message("usageType.packageDirective"))
-    val PACKAGE_MEMBER_ACCESS = UsageType(KotlinBundle.message("usageType.packageMemberAccess"))
+    val PACKAGE_DIRECTIVE = UsageType(KotlinBundle.lazyMessage("find.usages.type.packageDirective"))
+    val PACKAGE_MEMBER_ACCESS = UsageType(KotlinBundle.lazyMessage("find.usages.type.packageMemberAccess"))
 
     // common usage types
-    val CALLABLE_REFERENCE = UsageType(KotlinBundle.message("usageType.callable.reference"))
-    val NAMED_ARGUMENT = UsageType("Named argument")
+    val CALLABLE_REFERENCE = UsageType(KotlinBundle.lazyMessage("find.usages.type.callable.reference"))
+    val NAMED_ARGUMENT = UsageType(KotlinBundle.lazyMessage("find.usages.type.named.argument"))
 }

@@ -5,8 +5,8 @@ class TestSome<P> {
 }
 
 class Test {
-    companion object : <!UNRESOLVED_REFERENCE, DEBUG_INFO_UNRESOLVED_WITH_TARGET!>InnerClass<!>() {
-        val a = object: <!UNRESOLVED_REFERENCE, DEBUG_INFO_UNRESOLVED_WITH_TARGET!>InnerClass<!>() {
+    companion <!CYCLIC_SCOPES_WITH_COMPANION!>object<!> : <!DEBUG_INFO_UNRESOLVED_WITH_TARGET, UNRESOLVED_REFERENCE!>InnerClass<!>() {
+        val a = object: <!DEBUG_INFO_UNRESOLVED_WITH_TARGET, UNRESOLVED_REFERENCE!>InnerClass<!>() {
         }
 
         fun more(): InnerClass {
@@ -22,5 +22,5 @@ class Test {
     val inClass = 12
     fun foo() {}
 
-    open inner class InnerClass
+    open inner class <!CYCLIC_SCOPES_WITH_COMPANION!>InnerClass<!>
 }

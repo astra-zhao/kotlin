@@ -16,42 +16,22 @@
 
 package org.jetbrains.kotlin.ir.expressions.impl
 
-import org.jetbrains.kotlin.descriptors.VariableDescriptor
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrSetVariable
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.symbols.IrVariableSymbol
-import org.jetbrains.kotlin.ir.symbols.impl.IrVariableSymbolImpl
+import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
-import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 
 class IrSetVariableImpl(
-        startOffset: Int, endOffset: Int,
-        override val symbol: IrVariableSymbol,
-        override val origin: IrStatementOrigin?
-) : IrExpressionBase(startOffset, endOffset, symbol.descriptor.builtIns.unitType), IrSetVariable {
-    constructor(
-            startOffset: Int, endOffset: Int,
-            symbol: IrVariableSymbol,
-            value: IrExpression,
-            origin: IrStatementOrigin?
-    ) : this(startOffset, endOffset, symbol, origin) {
-        this.value = value
-    }
-
-    @Deprecated("Creates unbound symbol")
-    constructor(
-            startOffset: Int, endOffset: Int,
-            descriptor: VariableDescriptor,
-            value: IrExpression,
-            origin: IrStatementOrigin?
-    ) : this(startOffset, endOffset, IrVariableSymbolImpl(descriptor), value, origin)
-
-    override val descriptor: VariableDescriptor get() = symbol.descriptor
-
-    override lateinit var value: IrExpression
-
+    override val startOffset: Int,
+    override val endOffset: Int,
+    override val type: IrType,
+    override val symbol: IrVariableSymbol,
+    override var value: IrExpression,
+    override val origin: IrStatementOrigin?
+) : IrSetVariable() {
     override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R {
         return visitor.visitSetVariable(this, data)
     }

@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.js.test.utils
 
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.js.backend.ast.*
+import org.jetbrains.kotlin.resolve.calls.callUtil.isFakePsiElement
 
 class LineCollector : RecursiveJsVisitor() {
     val lines = mutableListOf<Int?>()
@@ -31,11 +32,23 @@ class LineCollector : RecursiveJsVisitor() {
     }
 
     private fun handleNodeLocation(node: JsNode) {
-        (node.source as? PsiElement)?.let { source ->
-            val file = source.containingFile
-            val offset = source.node.startOffset
-            val document = file.viewProvider.document!!
-            val line = document.getLineNumber(offset)
+        val source = node.source
+        val line = when (source) {
+            is PsiElement -> {
+                if (!source.isFakePsiElement) {
+                    val file = source.containingFile
+                    val offset = source.node.startOffset
+                    val document = file.viewProvider.document!!
+                    document.getLineNumber(offset)
+                } else null
+            }
+            is JsLocationWithSource -> {
+                source.startLine
+            }
+            else -> null
+        }
+
+        if (line != null) {
             currentStatement?.let {
                 val linesByStatement = lineNumbersByStatement.getOrPut(it, ::mutableListOf)
                 if (linesByStatement.lastOrNull() != line) {
@@ -47,20 +60,17 @@ class LineCollector : RecursiveJsVisitor() {
     }
 
     override fun visitExpressionStatement(x: JsExpressionStatement) {
-        val expression = x.expression
-        if (expression is JsFunction) {
-            expression.accept(this)
-        }
-        else {
-            withStatement(x) {
-                super.visitExpressionStatement(x)
-            }
+        withStatement(x) {
+            handleNodeLocation(x.expression)
+            lineNumbersByStatement[x]?.add(-1)
+            x.expression.acceptChildren(this)
         }
     }
 
     override fun visitIf(x: JsIf) {
         withStatement(x) {
             handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.ifExpression.accept(this)
         }
         x.thenStatement.accept(this)
@@ -70,6 +80,7 @@ class LineCollector : RecursiveJsVisitor() {
     override fun visitWhile(x: JsWhile) {
         withStatement(x) {
             handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.condition.accept(this)
         }
         x.body.accept(this)
@@ -77,14 +88,15 @@ class LineCollector : RecursiveJsVisitor() {
 
     override fun visitDoWhile(x: JsDoWhile) {
         withStatement(x) {
-            handleNodeLocation(x)
+            x.body.accept(this)
             x.condition.accept(this)
         }
-        x.body.accept(this)
     }
 
     override fun visitFor(x: JsFor) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.initExpression?.accept(this)
             x.initVars?.accept(this)
             x.condition?.accept(this)
@@ -107,26 +119,42 @@ class LineCollector : RecursiveJsVisitor() {
 
     override fun visitReturn(x: JsReturn) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitReturn(x)
         }
     }
 
     override fun visitVars(x: JsVars) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitVars(x)
         }
     }
 
     override fun visit(x: JsSwitch) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.expression.accept(this)
+            x.cases.forEach { accept(it) }
         }
-        x.cases.forEach { accept(it) }
     }
 
     override fun visitThrow(x: JsThrow) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitThrow(x)
+        }
+    }
+
+    override fun visitTry(x: JsTry) {
+        withStatement(x) {
+            x.tryBlock.acceptChildren(this)
+            x.catches?.forEach { accept(it) }
+            x.finallyBlock?.acceptChildren(this)
         }
     }
 

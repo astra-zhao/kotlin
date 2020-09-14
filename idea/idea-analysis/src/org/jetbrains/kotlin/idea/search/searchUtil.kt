@@ -18,19 +18,33 @@ package org.jetbrains.kotlin.idea.search
 
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeRegistry
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
+import com.intellij.psi.impl.cache.impl.id.IdIndex
+import com.intellij.psi.impl.cache.impl.id.IdIndexEntry
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.PsiSearchHelper
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
+import com.intellij.util.CommonProcessors
+import com.intellij.util.indexing.FileBasedIndex
 import org.jetbrains.kotlin.idea.KotlinFileType
+import org.jetbrains.kotlin.idea.util.application.runReadAction
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.scripting.definitions.findScriptDefinition
+import org.jetbrains.kotlin.types.expressions.OperatorConventions
+import java.util.*
 
 infix fun SearchScope.and(otherScope: SearchScope): SearchScope = intersectWith(otherScope)
 infix fun SearchScope.or(otherScope: SearchScope): SearchScope = union(otherScope)
+infix fun GlobalSearchScope.or(otherScope: SearchScope): GlobalSearchScope = union(otherScope)
 operator fun SearchScope.minus(otherScope: GlobalSearchScope): SearchScope = this and !otherScope
 operator fun GlobalSearchScope.not(): GlobalSearchScope = GlobalSearchScope.notScope(this)
 
@@ -50,34 +64,35 @@ fun Project.projectScope(): GlobalSearchScope = GlobalSearchScope.projectScope(t
 
 fun PsiFile.fileScope(): GlobalSearchScope = GlobalSearchScope.fileScope(this)
 
-fun GlobalSearchScope.restrictToKotlinSources() = GlobalSearchScope.getScopeRestrictedByFileTypes(this, KotlinFileType.INSTANCE)
+fun GlobalSearchScope.restrictByFileType(fileType: FileType) = GlobalSearchScope.getScopeRestrictedByFileTypes(this, fileType)
 
-fun SearchScope.restrictToKotlinSources(): SearchScope {
-    return when (this) {
-        is GlobalSearchScope -> restrictToKotlinSources()
-        is LocalSearchScope -> {
-            val ktElements = scope.filter { it.containingFile is KtFile }
-            when (ktElements.size) {
-                0 -> GlobalSearchScope.EMPTY_SCOPE
-                scope.size -> this
-                else -> LocalSearchScope(ktElements.toTypedArray())
-            }
+fun SearchScope.restrictByFileType(fileType: FileType): SearchScope = when (this) {
+    is GlobalSearchScope -> restrictByFileType(fileType)
+    is LocalSearchScope -> {
+        val elements = scope.filter { it.containingFile.fileType == fileType }
+        when (elements.size) {
+            0 -> GlobalSearchScope.EMPTY_SCOPE
+            scope.size -> this
+            else -> LocalSearchScope(elements.toTypedArray())
         }
-        else -> this
     }
+    else -> this
 }
+
+fun GlobalSearchScope.restrictToKotlinSources() = restrictByFileType(KotlinFileType.INSTANCE)
+
+fun SearchScope.restrictToKotlinSources() = restrictByFileType(KotlinFileType.INSTANCE)
 
 fun SearchScope.excludeKotlinSources(): SearchScope = excludeFileTypes(KotlinFileType.INSTANCE)
 
 fun SearchScope.excludeFileTypes(vararg fileTypes: FileType): SearchScope {
-    if (this is GlobalSearchScope) {
+    return if (this is GlobalSearchScope) {
         val includedFileTypes = FileTypeRegistry.getInstance().registeredFileTypes.filter { it !in fileTypes }.toTypedArray()
-        return GlobalSearchScope.getScopeRestrictedByFileTypes(this, *includedFileTypes)
-    }
-    else {
+        GlobalSearchScope.getScopeRestrictedByFileTypes(this, *includedFileTypes)
+    } else {
         this as LocalSearchScope
         val filteredElements = scope.filter { it.containingFile.fileType !in fileTypes }
-        return if (filteredElements.isNotEmpty())
+        if (filteredElements.isNotEmpty())
             LocalSearchScope(filteredElements.toTypedArray())
         else
             GlobalSearchScope.EMPTY_SCOPE
@@ -88,6 +103,44 @@ fun SearchScope.excludeFileTypes(vararg fileTypes: FileType): SearchScope {
 fun ReferencesSearch.SearchParameters.effectiveSearchScope(element: PsiElement): SearchScope {
     if (element == elementToSearch) return effectiveSearchScope
     if (isIgnoreAccessScope) return scopeDeterminedByUser
-    val accessScope = PsiSearchHelper.SERVICE.getInstance(element.project).getUseScope(element)
+    val accessScope = PsiSearchHelper.getInstance(element.project).getUseScope(element)
     return scopeDeterminedByUser.intersectWith(accessScope)
+}
+
+fun isOnlyKotlinSearch(searchScope: SearchScope): Boolean {
+    return searchScope is LocalSearchScope && searchScope.scope.all { it.containingFile is KtFile }
+}
+
+fun PsiSearchHelper.isCheapEnoughToSearchConsideringOperators(
+    name: String,
+    scope: GlobalSearchScope,
+    fileToIgnoreOccurrencesIn: PsiFile?,
+    progress: ProgressIndicator?
+): PsiSearchHelper.SearchCostResult {
+    if (OperatorConventions.isConventionName(Name.identifier(name))) {
+        return PsiSearchHelper.SearchCostResult.TOO_MANY_OCCURRENCES
+    }
+
+    return isCheapEnoughToSearch(name, scope, fileToIgnoreOccurrencesIn, progress)
+}
+
+fun findScriptsWithUsages(declaration: KtNamedDeclaration): List<KtFile> {
+    val project = declaration.project
+    val scope = PsiSearchHelper.getInstance(project).getUseScope(declaration) as? GlobalSearchScope
+        ?: return emptyList()
+
+    val name = declaration.name.takeIf { it?.isNotBlank() == true } ?: return emptyList()
+    val collector = CommonProcessors.CollectProcessor(ArrayList<VirtualFile>())
+    runReadAction {
+        FileBasedIndex.getInstance().getFilesWithKey(
+            IdIndex.NAME,
+            setOf(IdIndexEntry(name, true)),
+            collector,
+            scope
+        )
+    }
+    return collector.results
+        .mapNotNull { PsiManager.getInstance(project).findFile(it) as? KtFile }
+        .filter { it.findScriptDefinition() != null }
+        .toList()
 }

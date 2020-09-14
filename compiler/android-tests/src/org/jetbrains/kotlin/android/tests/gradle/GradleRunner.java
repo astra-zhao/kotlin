@@ -31,8 +31,9 @@ public class GradleRunner {
 
     public GradleRunner(PathManager pathManager) {
         listOfCommands = new ArrayList<>();
-        String cmdName = SystemInfo.isWindows ? "gradle.bat" : "gradle";
-        listOfCommands.add(pathManager.getGradleBinFolder() + "/" + cmdName);
+        String cmdName = SystemInfo.isWindows ? "gradlew.bat" : "gradlew";
+        listOfCommands.add(pathManager.getTmpFolder() + "/" + cmdName);
+        listOfCommands.add("--no-daemon");
         listOfCommands.add("--build-file");
         listOfCommands.add(pathManager.getTmpFolder() + "/build.gradle");
     }
@@ -48,6 +49,7 @@ public class GradleRunner {
         System.out.println("Building gradle project...");
         GeneralCommandLine build = generateCommandLine("build");
         build.addParameter("--stacktrace");
+        build.addParameter("--warn");
         RunResult result = RunUtils.execute(build);
         OutputUtils.checkResult(result);
     }
@@ -66,8 +68,10 @@ public class GradleRunner {
 
     public String connectedDebugAndroidTest() {
         System.out.println("Starting tests...");
-        RunResult result = RunUtils.execute(generateCommandLine("connectedAndroidTest"));
-        return result.getOutput();
+        GeneralCommandLine test = generateCommandLine("connectedAndroidTest");
+        test.addParameters("--stacktrace");
+        test.addParameters("--continue"); //run all flavors even if any fail
+        return RunUtils.execute(test).getOutput();
     }
 
     private GeneralCommandLine generateCommandLine(String taskName) {

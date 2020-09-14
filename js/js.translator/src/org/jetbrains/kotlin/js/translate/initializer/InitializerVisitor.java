@@ -51,21 +51,25 @@ public final class InitializerVisitor extends TranslatorVisitor<Void> {
         KtExpression delegate = property.getDelegateExpression();
         if (initializer != null) {
             assert value != null;
+            KotlinType type = TranslationUtils.isReferenceToSyntheticBackingField(descriptor) ?
+                              descriptor.getType() :
+                              TranslationUtils.getReturnTypeForCoercion(descriptor);
+            value = TranslationUtils.coerce(context, value, type);
             statement = generateInitializerForProperty(context, descriptor, value);
         }
         else if (delegate != null) {
             assert value != null;
-            statement = generateInitializerForDelegate(descriptor, value);
+            statement = generateInitializerForDelegate(context, descriptor, value);
         }
         else if (Boolean.TRUE.equals(context.bindingContext().get(BindingContext.BACKING_FIELD_REQUIRED, descriptor))) {
             JsNameRef backingFieldReference = TranslationUtils.backingFieldReference(context, descriptor);
             JsExpression defaultValue = generateDefaultValue(descriptor, backingFieldReference);
-            statement = TranslationUtils.assignmentToBackingField(context, descriptor, defaultValue).makeStmt();
+            statement = TranslationUtils.assignmentToBackingField(context, descriptor, defaultValue).source(property).makeStmt();
         }
         else if (JsDescriptorUtils.isSimpleFinalProperty(descriptor)) {
             JsNameRef propRef = new JsNameRef(context.getNameForDescriptor(descriptor), new JsThisRef());
             JsExpression defaultValue = generateDefaultValue(descriptor, propRef);
-            statement = JsAstUtils.assignment(propRef, defaultValue).makeStmt();
+            statement = JsAstUtils.assignment(propRef, defaultValue).source(property).makeStmt();
         }
 
         if (statement != null && !JsAstUtils.isEmptyStatement(statement)) {

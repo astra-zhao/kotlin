@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package org.jetbrains.kotlin.resolve.jvm.checkers
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.resolve.calls.checkers.CallChecker
 import org.jetbrains.kotlin.resolve.calls.checkers.CallCheckerContext
@@ -43,16 +43,17 @@ object ProtectedSyntheticExtensionCallChecker : CallChecker {
         val from = context.scope.ownerDescriptor
 
         // Already reported
-        if (!Visibilities.isVisibleIgnoringReceiver(descriptor, from)) return
+        if (!DescriptorVisibilities.isVisibleIgnoringReceiver(descriptor, from)) return
 
         if (resolvedCall.dispatchReceiver != null && resolvedCall.extensionReceiver !is ReceiverValue) return
 
         val receiverValue = resolvedCall.extensionReceiver as ReceiverValue
         val receiverTypes = listOf(receiverValue.type) + context.dataFlowInfo.getStableTypes(
-                DataFlowValueFactory.createDataFlowValue(receiverValue, context.trace.bindingContext, context.scope.ownerDescriptor)
+                context.dataFlowValueFactory.createDataFlowValue(receiverValue, context.trace.bindingContext, context.scope.ownerDescriptor),
+                context.languageVersionSettings
         )
 
-        if (receiverTypes.none { Visibilities.isVisible(getReceiverValueWithSmartCast(null, it), sourceFunction, from) }) {
+        if (receiverTypes.none { DescriptorVisibilities.isVisible(getReceiverValueWithSmartCast(null, it), sourceFunction, from) }) {
             context.trace.report(Errors.INVISIBLE_MEMBER.on(reportOn, descriptor, descriptor.visibility, from))
         }
     }

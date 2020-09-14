@@ -1,23 +1,13 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2019 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea
 
 import com.intellij.ide.IconProvider
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.util.Iconable
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
@@ -25,7 +15,12 @@ import com.intellij.ui.RowIcon
 import com.intellij.util.PlatformIcons
 import org.jetbrains.kotlin.asJava.classes.KtLightClassForFacade
 import org.jetbrains.kotlin.asJava.classes.KtLightClassForSourceDeclaration
-import org.jetbrains.kotlin.idea.caches.resolve.lightClasses.KtLightClassForDecompiledDeclaration
+import org.jetbrains.kotlin.asJava.unwrapped
+import org.jetbrains.kotlin.idea.KotlinIcons.ACTUAL
+import org.jetbrains.kotlin.idea.KotlinIcons.EXPECT
+import org.jetbrains.kotlin.idea.caches.lightClasses.KtLightClassForDecompiledDeclaration
+import org.jetbrains.kotlin.idea.util.hasMatchingExpected
+import org.jetbrains.kotlin.idea.util.isExpectDeclaration
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
@@ -35,21 +30,41 @@ import javax.swing.Icon
 class KotlinIconProvider : IconProvider(), DumbAware {
     override fun getIcon(psiElement: PsiElement, flags: Int): Icon? {
         if (psiElement is KtFile) {
-            val mainClass = getMainClass(psiElement)
-            return if (mainClass != null && psiElement.declarations.size == 1) getIcon(mainClass, flags) else KotlinIcons.FILE
+            if (psiElement.isScript()) {
+                return when {
+                    psiElement.name.endsWith(".gradle.kts") -> KotlinIcons.GRADLE_SCRIPT
+                    else -> KotlinIcons.SCRIPT
+                }
+            }
+            val mainClass = getSingleClass(psiElement)
+            return if (mainClass != null) getIcon(mainClass, flags) else KotlinIcons.FILE
         }
 
         val result = psiElement.getBaseIcon()
         if (flags and Iconable.ICON_FLAG_VISIBILITY > 0 && result != null && (psiElement is KtModifierListOwner && psiElement !is KtClassInitializer)) {
             val list = psiElement.modifierList
-            return createRowIcon(result, getVisibilityIcon(list))
+            val visibilityIcon = getVisibilityIcon(list)
+
+            val withExpectedActual: Icon = try {
+                result.addExpectActualMarker(psiElement)
+            } catch (indexNotReady: IndexNotReadyException) {
+                result
+            }
+
+            return createRowIcon(withExpectedActual, visibilityIcon)
         }
         return result
     }
 
     companion object {
-
         var INSTANCE = KotlinIconProvider()
+
+        fun isSingleClassFile(file: KtFile) = getSingleClass(file) != null
+
+        fun getSingleClass(file: KtFile): KtClassOrObject? {
+            val mainClass = getMainClass(file)
+            return if (mainClass != null && file.declarations.size == 1) mainClass else null
+        }
 
         fun getMainClass(file: KtFile): KtClassOrObject? {
             val classes = file.declarations.filterIsInstance<KtClassOrObject>()
@@ -82,7 +97,7 @@ class KotlinIconProvider : IconProvider(), DumbAware {
             return PlatformIcons.PUBLIC_ICON
         }
 
-        fun PsiElement.getBaseIcon(): Icon? = when(this) {
+        fun PsiElement.getBaseIcon(): Icon? = when (this) {
             is KtPackageDirective -> PlatformIcons.PACKAGE_ICON
             is KtLightClassForFacade -> KotlinIcons.FILE
             is KtLightClassForDecompiledDeclaration -> {
@@ -99,6 +114,7 @@ class KotlinIconProvider : IconProvider(), DumbAware {
                 else ->
                     KotlinIcons.FUNCTION
             }
+            is KtConstructor<*> -> PlatformIcons.METHOD_ICON
             is KtFunctionLiteral -> KotlinIcons.LAMBDA
             is KtClass -> when {
                 isInterface() -> KotlinIcons.INTERFACE
@@ -111,14 +127,26 @@ class KotlinIconProvider : IconProvider(), DumbAware {
             is KtParameter -> {
                 if (KtPsiUtil.getClassIfParameterIsProperty(this) != null) {
                     if (isMutable) KotlinIcons.FIELD_VAR else KotlinIcons.FIELD_VAL
-                }
-                else
+                } else
                     KotlinIcons.PARAMETER
             }
             is KtProperty -> if (isVar) KotlinIcons.FIELD_VAR else KotlinIcons.FIELD_VAL
             is KtClassInitializer -> KotlinIcons.CLASS_INITIALIZER
             is KtTypeAlias -> KotlinIcons.TYPE_ALIAS
-            else -> null
+            else -> unwrapped?.takeIf { it != this }?.getBaseIcon()
         }
+    }
+}
+
+private fun Icon.addExpectActualMarker(element: PsiElement): Icon {
+    val declaration = (element as? KtNamedDeclaration) ?: return this
+    val additionalIcon = when {
+        declaration.isExpectDeclaration() -> EXPECT
+        declaration.hasMatchingExpected() -> ACTUAL
+        else -> return this
+    }
+    return RowIcon(2).apply {
+        setIcon(this@addExpectActualMarker, 0)
+        setIcon(additionalIcon, 1)
     }
 }

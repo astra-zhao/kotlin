@@ -42,16 +42,16 @@ class Concat : IntrinsicMethod() {
         if (element is KtBinaryExpression && element.operationReference.getReferencedNameElementType() == KtTokens.PLUS) {
             // LHS + RHS
             genStringBuilderConstructor(v)
-            codegen.invokeAppend(element.left)
-            codegen.invokeAppend(element.right)
+            codegen.invokeAppend(v, element.left)
+            codegen.invokeAppend(v, element.right)
         }
         else {
             // Explicit plus call LHS?.plus(RHS) or LHS.plus(RHS)
             receiver.put(AsmTypes.JAVA_STRING_TYPE, v)
             genStringBuilderConstructor(v)
             v.swap()
-            genInvokeAppendMethod(v, returnType)
-            codegen.invokeAppend(arguments[0])
+            genInvokeAppendMethod(v, returnType, null)
+            codegen.invokeAppend(v, arguments[0])
         }
 
         v.invokevirtual("java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false)
@@ -92,7 +92,7 @@ class Concat : IntrinsicMethod() {
                     // in case of callable reference passed to a generic function, e.g.:
                     //      charArrayOf('O', 'K').fold("", String::plus)
                     // TODO Make String::plus generic, and invoke proper StringBuilder#append.
-                    AsmUtil.genInvokeAppendMethod(v, AsmTypes.OBJECT_TYPE)
+                    AsmUtil.genInvokeAppendMethod(v, AsmTypes.OBJECT_TYPE, null)
                     v.invokevirtual("java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false)
                 }
             }

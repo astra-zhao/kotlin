@@ -20,6 +20,7 @@ import com.intellij.find.FindBundle;
 import com.intellij.find.FindSettings;
 import com.intellij.find.findUsages.FindUsagesHandler;
 import com.intellij.find.findUsages.JavaFindUsagesDialog;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.ui.IdeBorderFactory;
@@ -29,7 +30,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.idea.KotlinBundle;
 import org.jetbrains.kotlin.idea.findUsages.KotlinPropertyFindUsagesOptions;
 import org.jetbrains.kotlin.lexer.KtTokens;
-import org.jetbrains.kotlin.psi.KtNamedDeclaration;
+import org.jetbrains.kotlin.psi.*;
+import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
 
 import javax.swing.*;
 
@@ -46,10 +48,12 @@ public class KotlinFindPropertyUsagesDialog extends JavaFindUsagesDialog<KotlinP
         super(element, project, findUsagesOptions, toShowInNewTab, mustOpenInNewTab, isSingleFile, handler);
     }
 
-    private StateRestoringCheckBox cbReaders;
-    private StateRestoringCheckBox cbWriters;
-    private StateRestoringCheckBox cbOverrides;
+    private StateRestoringCheckBox readAccesses;
+    private StateRestoringCheckBox writeAccesses;
+    private StateRestoringCheckBox overrideUsages;
+    private StateRestoringCheckBox expectedUsages;
 
+    @NotNull
     @Override
     protected KotlinPropertyFindUsagesOptions getFindUsagesOptions() {
         return (KotlinPropertyFindUsagesOptions) myFindUsagesOptions;
@@ -64,9 +68,12 @@ public class KotlinFindPropertyUsagesDialog extends JavaFindUsagesDialog<KotlinP
     public void calcFindUsagesOptions(KotlinPropertyFindUsagesOptions options) {
         super.calcFindUsagesOptions(options);
 
-        options.isReadAccess = isSelected(cbReaders);
-        options.isWriteAccess = isSelected(cbWriters);
-        options.setSearchOverrides(isSelected(cbOverrides));
+        options.isReadAccess = isSelected(readAccesses);
+        options.isWriteAccess = isSelected(writeAccesses);
+        options.setSearchOverrides(isSelected(overrideUsages));
+        if (expectedUsages != null) {
+            options.setSearchExpected(expectedUsages.isSelected());
+        }
     }
 
     @Override
@@ -77,14 +84,14 @@ public class KotlinFindPropertyUsagesDialog extends JavaFindUsagesDialog<KotlinP
 
         KotlinPropertyFindUsagesOptions options = getFindUsagesOptions();
 
-        cbReaders = addCheckboxToPanel(
-                KotlinBundle.message("find.what.property.readers.checkbox"),
+        readAccesses = addCheckboxToPanel(
+                KotlinBundle.message("find.declaration.property.readers.checkbox"),
                 options.isReadAccess,
                 findWhatPanel,
                 true
         );
-        cbWriters = addCheckboxToPanel(
-                KotlinBundle.message("find.what.property.writers.checkbox"),
+        writeAccesses = addCheckboxToPanel(
+                KotlinBundle.message("find.declaration.property.writers.checkbox"),
                 options.isWriteAccess,
                 findWhatPanel,
                 true
@@ -107,19 +114,69 @@ public class KotlinFindPropertyUsagesDialog extends JavaFindUsagesDialog<KotlinP
         boolean isAbstract = property.hasModifier(KtTokens.ABSTRACT_KEYWORD);
         boolean isOpen = property.hasModifier(KtTokens.OPEN_KEYWORD);
         if (isOpen || isAbstract) {
-            cbOverrides = addCheckboxToPanel(
+            overrideUsages = addCheckboxToPanel(
                     isAbstract
-                    ? KotlinBundle.message("find.what.implementing.properties.checkbox")
-                    : KotlinBundle.message("find.what.overriding.properties.checkbox"),
+                    ? KotlinBundle.message("find.declaration.implementing.properties.checkbox")
+                    : KotlinBundle.message("find.declaration.overriding.properties.checkbox"),
                     FindSettings.getInstance().isSearchOverloadedMethods(),
                     optionsPanel,
                     false
+            );
+        }
+        boolean isActual = PsiUtilsKt.hasActualModifier(property);
+        KotlinPropertyFindUsagesOptions options = getFindUsagesOptions();
+        if (isActual) {
+            expectedUsages = addCheckboxToPanel(
+                    KotlinBundle.message("find.usages.checkbox.name.expected.properties"),
+                    options.getSearchExpected(),
+                    optionsPanel,
+                    false
+            );
+        }
+
+        if (isDataClassConstructorProperty(property)) {
+            JCheckBox dataClassComponentCheckBox =
+                    new JCheckBox(KotlinBundle.message("find.usages.checkbox.text.fast.data.class.component.search"));
+            dataClassComponentCheckBox.setToolTipText(KotlinBundle.message(
+                    "find.usages.tool.tip.text.disable.search.for.data.class.components.and.destruction.declarations.project.wide.setting"));
+            Project project = property.getProject();
+            dataClassComponentCheckBox.setSelected(getDisableComponentAndDestructionSearch(project));
+            optionsPanel.add(dataClassComponentCheckBox);
+            dataClassComponentCheckBox.addActionListener(
+                    ___ -> setDisableComponentAndDestructionSearch(project, dataClassComponentCheckBox.isSelected())
             );
         }
     }
 
     @Override
     protected void update() {
-        setOKActionEnabled(isSelected(cbReaders) || isSelected(cbWriters));
+        setOKActionEnabled(isSelected(readAccesses) || isSelected(writeAccesses));
+    }
+
+    private static final boolean disableComponentAndDestructionSearchDefault = false;
+    private static final String optionName = "kotlin.disable.search.component.and.destruction";
+
+    public static boolean getDisableComponentAndDestructionSearch(Project project) {
+        return PropertiesComponent.getInstance(project).getBoolean(optionName, disableComponentAndDestructionSearchDefault);
+    }
+
+    public static void setDisableComponentAndDestructionSearch(Project project, boolean value) {
+        PropertiesComponent.getInstance(project).setValue(optionName, value, disableComponentAndDestructionSearchDefault);
+    }
+
+    private static boolean isDataClassConstructorProperty(KtNamedDeclaration declaration) {
+        if (declaration instanceof KtParameter) {
+            PsiElement parent = declaration.getParent();
+            if (parent instanceof KtParameterList) {
+                parent = parent.getParent();
+                if (parent instanceof KtPrimaryConstructor) {
+                    parent = parent.getParent();
+                    if (parent instanceof KtClass) {
+                        return ((KtClass)parent).isData();
+                    }
+                }
+            }
+        }
+        return false;
     }
 }

@@ -1,3 +1,4 @@
+// WITH_RUNTIME
 // FILE: Promise.java
 import org.jetbrains.annotations.NotNull;
 
